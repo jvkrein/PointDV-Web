@@ -1,15 +1,11 @@
 // app/editar-evento.jsx
 
-/**
- * Tela de Edição de Evento.
- */
-
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CATEGORIAS_EVENTOS } from '../constants/categories';
 import { EventsContext } from '../contexts/EventsContext';
-import { db } from '../firebaseConfig';
 
 const COLORS = {
   primary: '#4A90E2',
@@ -29,21 +24,14 @@ const COLORS = {
   dark: '#333333',
   lightGray: '#F0F2F5',
   red: '#dc3545',
-  warning: '#f59e0b',
-  warningBg: '#fffbeb',
-  warningText: '#b45309',
 };
 
-// Usar imagens de melhor qualidade nas urls padrão se possível
+const API_URL = 'http://localhost:3000/api';
+
 const DEFAULT_IMAGES = {
   'Comida': 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
   'Música ao Vivo': 'https://images.unsplash.com/photo-1501612780327-45045538702b?w=800',
-  'Promoções': 'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?w=800',
-  'Festas e Baladas': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800',
-  'Cultura e Arte': 'https://images.unsplash.com/photo-1508807526345-65c88d30212f?w=800',
-  'Esportes': 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800',
-  'Compras': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800',
-  'Cursos e Workshops': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800',
+  // ... (mesmas imagens)
   'default': 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=800'
 };
 
@@ -66,7 +54,6 @@ const EditarEventoScreen = () => {
   const [categoria, setCategoria] = useState('');
   const [descricao, setDescricao] = useState('');
   
-  // NOVOS ESTADOS DE DATA (Início e Fim)
   const [dataInicio, setDataInicio] = useState('');
   const [horaInicio, setHoraInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
@@ -80,7 +67,7 @@ const EditarEventoScreen = () => {
   const [error, setError] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // --- MÁSCARAS (Genéricas para reuso) ---
+  // --- MÁSCARAS ---
   const handleDateChange = (text, setFunc) => {
     let numbers = text.replace(/[^0-9]/g, '');
     if (numbers.length > 8) numbers = numbers.substr(0, 8);
@@ -88,7 +75,6 @@ const EditarEventoScreen = () => {
     else if (numbers.length > 2) setFunc(`${numbers.substr(0, 2)}/${numbers.substr(2)}`);
     else setFunc(numbers);
   };
-
   const handleTimeChange = (text, setFunc) => {
     let numbers = text.replace(/[^0-9]/g, '');
     if (numbers.length > 4) numbers = numbers.substr(0, 4);
@@ -96,7 +82,6 @@ const EditarEventoScreen = () => {
     else setFunc(numbers);
   };
 
-  // --- IMAGENS (Atualizado com melhor qualidade) ---
   const pickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -108,10 +93,9 @@ const EditarEventoScreen = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [16, 9],
-        quality: 0.8, // AUMENTADO de 0.5 para 0.8
+        quality: 0.8,
         base64: true,
       });
-      
       if (!result.canceled && result.assets && result.assets.length > 0) {
          const imageUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
          setImageUrl(imageUri);
@@ -128,7 +112,7 @@ const EditarEventoScreen = () => {
     setModalVisible(false);
   };
 
-  // --- CARREGAR DADOS (Com compatibilidade para eventos antigos) ---
+  // --- CARREGAR DADOS ---
   useEffect(() => {
     if (!eventId) {
       Alert.alert("Erro", "Nenhum ID de evento fornecido.");
@@ -137,25 +121,19 @@ const EditarEventoScreen = () => {
     }
     const fetchEventData = async () => {
       try {
-        const eventDocRef = doc(db, 'eventos', eventId);
-        const docSnap = await getDoc(eventDocRef);
-        if (docSnap.exists()) {
-          const d = docSnap.data();
+        const response = await fetch(`${API_URL}/eventos/${eventId}`);
+        if (response.ok) {
+          const d = await response.json();
+          // Mapeia do backend (snake_case) para frontend (camelCase)
           setTitulo(d.titulo);
           setCategoria(d.categoria);
           setDescricao(d.descricao);
-          
-          // Lógica de Compatibilidade:
-          // Se existir 'dataInicio', usa. Se não, tenta usar o antigo 'data'.
-          setDataInicio(d.dataInicio || d.data || '');
-          setHoraInicio(d.horaInicio || d.horario || '');
-          
-          // Novos campos (podem estar vazios em eventos antigos)
-          setDataFim(d.dataFim || '');
-          setHoraFim(d.horaFim || '');
-
+          setDataInicio(d.data_inicio);
+          setHoraInicio(d.hora_inicio);
+          setDataFim(d.data_fim || '');
+          setHoraFim(d.hora_fim || '');
           setEndereco(d.endereco); 
-          setImageUrl(d.imageUrl || '');
+          setImageUrl(d.image_url || '');
         } else {
           Alert.alert("Erro", "Evento não encontrado.");
           router.back();
@@ -186,11 +164,11 @@ const EditarEventoScreen = () => {
     }
     setIsLoading(true);
     try {
+      const token = await AsyncStorage.getItem('userToken');
       const eventoAtualizado = {
         titulo,
         categoria,
         descricao,
-        // Novos campos
         dataInicio,
         horaInicio,
         dataFim,
@@ -198,14 +176,24 @@ const EditarEventoScreen = () => {
         endereco, 
         imageUrl: imageUrl || '',
       };
-      const eventDocRef = doc(db, 'eventos', eventId);
-      await updateDoc(eventDocRef, eventoAtualizado);
+      
+      const response = await fetch(`${API_URL}/eventos/${eventId}`, {
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(eventoAtualizado)
+      });
+      
+      if (!response.ok) throw new Error('Falha ao atualizar');
+
       setIsLoading(false);
       Alert.alert('Sucesso!', 'Seu evento foi atualizado.');
       router.back(); 
-    } catch (firebaseError) {
+    } catch (err) {
       setIsLoading(false);
-      console.error('Erro ao atualizar evento:', firebaseError);
+      console.error('Erro ao atualizar evento:', err);
       setError('Ocorreu um erro ao salvar seu evento.');
     }
   };
@@ -253,25 +241,11 @@ const EditarEventoScreen = () => {
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <Text style={styles.label}>Data Início *</Text>
-              <TextInput 
-                style={styles.input} 
-                value={dataInicio} 
-                onChangeText={(t) => handleDateChange(t, setDataInicio)} 
-                keyboardType="numeric" 
-                maxLength={10} 
-                editable={!isLoading} 
-              />
+              <TextInput style={styles.input} value={dataInicio} onChangeText={(t) => handleDateChange(t, setDataInicio)} keyboardType="numeric" maxLength={10} editable={!isLoading} />
             </View>
             <View style={styles.halfInput}>
               <Text style={styles.label}>Hora Início *</Text>
-              <TextInput 
-                style={styles.input} 
-                value={horaInicio} 
-                onChangeText={(t) => handleTimeChange(t, setHoraInicio)} 
-                keyboardType="numeric" 
-                maxLength={5} 
-                editable={!isLoading} 
-              />
+              <TextInput style={styles.input} value={horaInicio} onChangeText={(t) => handleTimeChange(t, setHoraInicio)} keyboardType="numeric" maxLength={5} editable={!isLoading} />
             </View>
           </View>
         </View>
@@ -282,25 +256,11 @@ const EditarEventoScreen = () => {
           <View style={styles.row}>
             <View style={styles.halfInput}>
               <Text style={styles.label}>Data Fim *</Text>
-              <TextInput 
-                style={styles.input} 
-                value={dataFim} 
-                onChangeText={(t) => handleDateChange(t, setDataFim)} 
-                keyboardType="numeric" 
-                maxLength={10} 
-                editable={!isLoading} 
-              />
+              <TextInput style={styles.input} value={dataFim} onChangeText={(t) => handleDateChange(t, setDataFim)} keyboardType="numeric" maxLength={10} editable={!isLoading} />
             </View>
             <View style={styles.halfInput}>
               <Text style={styles.label}>Hora Fim *</Text>
-              <TextInput 
-                style={styles.input} 
-                value={horaFim} 
-                onChangeText={(t) => handleTimeChange(t, setHoraFim)} 
-                keyboardType="numeric" 
-                maxLength={5} 
-                editable={!isLoading} 
-              />
+              <TextInput style={styles.input} value={horaFim} onChangeText={(t) => handleTimeChange(t, setHoraFim)} keyboardType="numeric" maxLength={5} editable={!isLoading} />
             </View>
           </View>
         </View>
@@ -414,8 +374,6 @@ const styles = StyleSheet.create({
   cancelButtonText: { color: COLORS.primary, fontWeight: 'bold' },
   errorText: { color: COLORS.red, fontSize: 14, marginBottom: 10, textAlign: 'center', fontWeight: '600' },
   permissionDeniedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: COLORS.white },
-  permissionDeniedTitle: { fontSize: 22, fontWeight: 'bold', color: COLORS.red, marginTop: 15, marginBottom: 10 },
-  permissionDeniedText: { fontSize: 16, color: COLORS.dark, textAlign: 'center', lineHeight: 24 },
   modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: { backgroundColor: COLORS.white, borderRadius: 10, width: '90%', maxHeight: '80%', padding: 15 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },

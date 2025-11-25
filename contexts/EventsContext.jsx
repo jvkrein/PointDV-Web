@@ -1,117 +1,124 @@
 // contexts/EventsContext.jsx
-
-import React, { createContext, useState, useMemo, useCallback, useEffect } from 'react';
-import { auth, db } from '../firebaseConfig'; 
-import { doc, updateDoc, arrayUnion, arrayRemove, onSnapshot } from 'firebase/firestore'; 
-import { onAuthStateChanged, signOut } from 'firebase/auth'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 
 export const EventsContext = createContext();
 
+const API_URL = 'http://localhost:3000/api'; 
+
 export const EventsProvider = ({ children }) => {
+  const [userType, setUserType] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [favoritedEvents, setFavoritedEvents] = useState([]);
   const [eventosConfirmados, setEventosConfirmados] = useState([]);
-  const [userType, setUserType] = useState(null); 
-  const [currentUser, setCurrentUser] = useState(null); 
-  const [userData, setUserData] = useState(null);
+  
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [selectedMapAddress, setSelectedMapAddress] = useState(null);
 
   useEffect(() => {
-    let unsubscribeSnapshot = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      // Se existe um snapshot antigo rodando, cancela ele IMEDIATAMENTE
-      if (unsubscribeSnapshot) {
-        unsubscribeSnapshot();
-        unsubscribeSnapshot = null;
-      }
-
-      if (user) {
-        setCurrentUser(user);
-        const userDocRef = doc(db, 'usuarios', user.uid);
-        
-        // Cria o novo ouvinte
-        unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setUserType(data.tipoConta); 
-            setFavoritedEvents(data.favoritos || []); 
-            setUserData(data); 
-            setEventosConfirmados(data.eventosConfirmados || []);
+    const loadUser = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        if (token) {
+          const response = await fetch(`${API_URL}/users/me`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setUserData(data.user);
+            setUserType(data.user.tipoConta);
+            setFavoritedEvents(data.user.favoritos || []);
+            setEventosConfirmados(data.user.eventosConfirmados || []);
           } else {
-            // Usuário autenticado mas sem doc no banco (pode acontecer)
-            setUserType(null);
-            setUserData(null);
+            await logout();
           }
-          setIsAuthLoading(false); 
-        }, (error) => {
-          // Ignora erro de permissão se for causado pelo logout rápido
-          if (error.code !== 'permission-denied') {
-             console.error("Erro ao ouvir perfil do usuário:", error);
-          }
-          setIsAuthLoading(false);
-        });
-
-      } else {
-        // Usuário deslogou
-        setCurrentUser(null);
-        setUserType(null);
-        setFavoritedEvents([]);
-        setUserData(null);
-        setEventosConfirmados([]);
+        }
+      } catch (e) {
+        console.error("Erro ao carregar sessão:", e);
+      } finally {
         setIsAuthLoading(false);
       }
-    });
-
-    // Limpeza final ao desmontar o Provider
-    return () => {
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
-      unsubscribeAuth();
     };
-  }, []); 
-
-  const toggleFavorite = useCallback(async (eventId) => {
-    if (!currentUser) return;
-    const userDocRef = doc(db, 'usuarios', currentUser.uid);
-    if (favoritedEvents.includes(eventId)) {
-      await updateDoc(userDocRef, { favoritos: arrayRemove(eventId) });
-    } else {
-      await updateDoc(userDocRef, { favoritos: arrayUnion(eventId) });
-    }
-  }, [currentUser, favoritedEvents]);
-  
-  const toggleConfirmedEvent = useCallback(async (eventId) => {
-    if (!currentUser) return;
-    const userDocRef = doc(db, 'usuarios', currentUser.uid);
-    if (eventosConfirmados.includes(eventId)) {
-      await updateDoc(userDocRef, { eventosConfirmados: arrayRemove(eventId) });
-    } else {
-      await updateDoc(userDocRef, { eventosConfirmados: arrayUnion(eventId) });
-    }
-  }, [currentUser, eventosConfirmados]);
-
-  const logout = useCallback(() => {
-    signOut(auth).catch((error) => {
-      console.error("Erro ao fazer logout:", error);
-    });
+    loadUser();
   }, []);
-  
-  const value = useMemo(
-    () => ({
-      isAuthLoading,
-      favoritedEvents,
-      toggleFavorite,
-      eventosConfirmados,
-      toggleConfirmedEvent,
-      userType,
-      setUserType,
-      logout,
-      userData,
-      selectedMapAddress,   
-      setSelectedMapAddress 
-    }),
-    [isAuthLoading, favoritedEvents, toggleFavorite, eventosConfirmados, toggleConfirmedEvent, userType, logout, userData, selectedMapAddress]
-  );
+
+  const login = async (email, password) => {
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Falha no login');
+      }
+
+      await AsyncStorage.setItem('userToken', data.token);
+      setUserData(data.user);
+      setUserType(data.user.tipoConta);
+      return true;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // --- CORREÇÃO AQUI: Logout Robustecido ---
+  const logout = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem('userToken');
+      setUserData(null);
+      setUserType(null);
+      setFavoritedEvents([]);
+      setEventosConfirmados([]);
+      return true; // Confirma que terminou
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // ... (Resto das funções toggleFavorite e toggleConfirmedEvent iguais)
+  const toggleFavorite = useCallback(async (eventId) => {
+    if (!userData) return;
+    const isFav = favoritedEvents.includes(eventId);
+    setFavoritedEvents(prev => isFav ? prev.filter(id => id !== eventId) : [...prev, eventId]);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      await fetch(`${API_URL}/users/favorites`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ eventId })
+      });
+    } catch (error) { console.error(error); }
+  }, [userData, favoritedEvents]);
+
+  const toggleConfirmedEvent = useCallback((eventId) => {
+     if (eventosConfirmados.includes(eventId)) {
+        setEventosConfirmados(prev => prev.filter(id => id !== eventId));
+     } else {
+        setEventosConfirmados(prev => [...prev, eventId]);
+     }
+  }, [eventosConfirmados]);
+
+  const value = useMemo(() => ({
+    isAuthLoading,
+    userData,
+    userType,
+    login,
+    logout,
+    favoritedEvents,
+    toggleFavorite,
+    eventosConfirmados,
+    toggleConfirmedEvent,
+    selectedMapAddress,
+    setSelectedMapAddress
+  }), [isAuthLoading, userData, userType, favoritedEvents, eventosConfirmados, selectedMapAddress]);
 
   return (
     <EventsContext.Provider value={value}>

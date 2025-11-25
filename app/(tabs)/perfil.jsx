@@ -1,26 +1,22 @@
 // app/(tabs)/perfil.jsx
-
-/**
- * Tela de Perfil do Usuário.
- */
-
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useContext, useState, useEffect } from 'react'; 
-import { 
-  ScrollView, 
-  StyleSheet, 
-  Text, 
-  TouchableOpacity, 
-  View, 
+import { useContext } from 'react';
+import {
   ActivityIndicator,
-  Image
-} from 'react-native'; 
+  Alert,
+  Image,
+  Platform // Importar Platform para checar Web
+  ,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EventsContext } from '../../contexts/EventsContext'; 
-import { db } from '../../firebaseConfig'; 
-import { doc, getDoc } from 'firebase/firestore'; 
+import { EventsContext } from '../../contexts/EventsContext';
 
 const COLORS = {
   primary: '#4A90E2',
@@ -45,51 +41,41 @@ const ProfileListItem = ({ icon, title, subtitle, onPress }) => (
 );
 
 const PerfilScreen = () => {
-  const { userType, logout, userData, favoritedEvents, eventosConfirmados } = useContext(EventsContext);
+  const { userData, logout, favoritedEvents, eventosConfirmados } = useContext(EventsContext);
 
-  // Estados para guardar a contagem REAL (validada)
-  const [confirmedCount, setConfirmedCount] = useState(0);
-  const [favoritesCount, setFavoritesCount] = useState(0);
-  const [isLoadingCounts, setIsLoadingCounts] = useState(true);
-
-  // --- LÓGICA DE VERIFICAÇÃO ---
-  useEffect(() => {
-    const validateCounts = async () => {
-      setIsLoadingCounts(true);
-
-      // Função auxiliar para checar quantos IDs são válidos
-      const getValidCount = async (ids) => {
-        if (!ids || ids.length === 0) return 0;
-        try {
-          // Faz uma busca para cada ID para ver se o doc existe
-          const promises = ids.map(id => getDoc(doc(db, 'eventos', id)));
-          const docs = await Promise.all(promises);
-          // Filtra só os que existem (.exists())
-          return docs.filter(d => d.exists()).length;
-        } catch (e) {
-          console.error("Erro ao validar contagem:", e);
-          return 0;
-        }
-      };
-
-      const [validConfirmed, validFavorites] = await Promise.all([
-        getValidCount(eventosConfirmados),
-        getValidCount(favoritedEvents)
-      ]);
-
-      setConfirmedCount(validConfirmed);
-      setFavoritesCount(validFavorites);
-      setIsLoadingCounts(false);
-    };
-
-    validateCounts();
-    
-    // Roda sempre que as listas do contexto mudarem
-  }, [eventosConfirmados, favoritedEvents]);
-
+  // --- CORREÇÃO DO LOGOUT ---
+  const performLogout = async () => {
+    await logout();
+    // Força a ida para o Login e limpa o histórico para não voltar com botão "voltar"
+    router.replace('/login');
+  };
 
   const handleLogout = () => {
-    logout();
+    if (Platform.OS === 'web') {
+      // Na web o Alert.alert as vezes falha ou é feio, usamos confirm do navegador
+      if (window.confirm("Tem certeza que deseja sair da sua conta?")) {
+        performLogout();
+      }
+    } else {
+      Alert.alert(
+        "Sair",
+        "Tem certeza que deseja sair?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sair", style: "destructive", onPress: performLogout }
+        ]
+      );
+    }
+  };
+
+  // --- CORREÇÃO DO BOTÃO VOLTAR ---
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      // Se não tiver histórico (refresh na pagina), vai pra Home
+      router.replace('/(tabs)/');
+    }
   };
 
   if (!userData) {
@@ -97,20 +83,17 @@ const PerfilScreen = () => {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{marginTop: 10}}>Carregando perfil...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Textos dinâmicos baseados na contagem real
-  const eventosConfirmadosSub = isLoadingCounts 
-    ? 'Calculando...' 
-    : `${confirmedCount} ${confirmedCount === 1 ? 'evento confirmado' : 'eventos confirmados'}`;
-    
-  const favoritosSub = isLoadingCounts 
-    ? 'Calculando...' 
-    : `${favoritesCount} ${favoritesCount === 1 ? 'evento salvo' : 'eventos salvos'}`;
+  const confirmedCount = eventosConfirmados ? eventosConfirmados.length : 0;
+  const favoritesCount = favoritedEvents ? favoritedEvents.length : 0;
 
+  const eventosConfirmadosSub = `${confirmedCount} ${confirmedCount === 1 ? 'evento confirmado' : 'eventos confirmados'}`;
+  const favoritosSub = `${favoritesCount} ${favoritesCount === 1 ? 'evento salvo' : 'eventos salvos'}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -118,7 +101,7 @@ const PerfilScreen = () => {
       <ScrollView keyboardShouldPersistTaps="handled">
 
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
           </TouchableOpacity>
           <View style={styles.avatar}>
@@ -132,13 +115,12 @@ const PerfilScreen = () => {
             )}
           </View>
           <Text style={styles.userName}>{userData.nome}</Text>
-          <View style={userType === 'consumidor' ? styles.userTagConsumer : styles.userTagLojista}>
+          <View style={userData.tipoConta === 'consumidor' ? styles.userTagConsumer : styles.userTagLojista}>
             <Text style={styles.userTagText}>{userData.tipoConta}</Text>
           </View>
         </View>
 
         <View style={styles.content}>
-
           <View style={styles.infoCard}>
             <View style={styles.infoItem}>
               <MaterialCommunityIcons name="email-outline" size={24} color={COLORS.primary} />
@@ -147,14 +129,14 @@ const PerfilScreen = () => {
                 <Text style={styles.infoValue}>{userData.email}</Text>
               </View>
             </View>
-            {userType === 'lojista' && (
+            {userData.tipoConta === 'lojista' && (
               <>
                 <View style={styles.divider} />
                 <View style={styles.infoItem}>
                   <MaterialCommunityIcons name="storefront-outline" size={24} color={COLORS.primary} />
                   <View style={styles.infoTextContainer}>
                     <Text style={styles.infoTitle}>Estabelecimento</Text>
-                    <Text style={styles.infoValue}>{userData.nomeNegocio}</Text>
+                    <Text style={styles.infoValue}>{userData.nomeNegocio || 'Não informado'}</Text>
                   </View>
                 </View>
               </>
@@ -169,7 +151,7 @@ const PerfilScreen = () => {
               onPress={() => router.push('/editar-perfil')}
             />
 
-            {userType === 'lojista' && (
+            {userData.tipoConta === 'lojista' && (
               <ProfileListItem 
                 icon="calendar-edit"
                 title="Gerenciar Eventos"
@@ -203,7 +185,7 @@ const PerfilScreen = () => {
             <View style={{flex: 1}}>
               <Text style={styles.aboutTitle}>Sobre o PointDV</Text>
               <Text style={styles.aboutText}>PointDV é seu guia para eventos locais. Conectamos você com o melhor da cidade.</Text>
-              <Text style={styles.aboutListItem}>- Versão 1.0.0</Text>
+              <Text style={styles.aboutListItem}>- Versão 1.0.0 (Web)</Text>
               <Text style={styles.aboutListItem}>- Feito em Dois Vizinhos, PR</Text>
             </View>
             <MaterialCommunityIcons name="map-marker-radius" size={50} color={COLORS.primary} />
@@ -221,14 +203,11 @@ const PerfilScreen = () => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.lightGray },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-  },
-  header: { backgroundColor: COLORS.primary, padding: 20, paddingTop: 60, alignItems: 'center' },
-  backButton: { position: 'absolute', top: 55, left: 15 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.white },
+  // Adicionado zIndex para garantir que o botão seja clicável
+  header: { backgroundColor: COLORS.primary, padding: 20, paddingTop: 60, alignItems: 'center', zIndex: 10 },
+  // Botão de voltar com zIndex alto
+  backButton: { position: 'absolute', top: 55, left: 15, zIndex: 20, padding: 10 },
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   userName: { fontSize: 22, fontWeight: 'bold', color: COLORS.white },
   userTagConsumer: { backgroundColor: COLORS.white, borderRadius: 12, paddingVertical: 4, paddingHorizontal: 12, marginTop: 8 },

@@ -1,21 +1,19 @@
 // app/detalhes-lojista.jsx
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router, useLocalSearchParams, Link } from 'expo-router';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-  ActivityIndicator,
-  Image
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../firebaseConfig'; 
-import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from 'firebase/firestore';
 
 const COLORS = {
   primary: '#4A90E2',
@@ -26,6 +24,7 @@ const COLORS = {
 };
 
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=500';
+const API_URL = 'http://localhost:3000/api';
 
 const EventCard = ({ event }) => (
   <Link 
@@ -49,9 +48,9 @@ const EventCard = ({ event }) => (
         <Text style={styles.cardDescription} numberOfLines={2}>{event.descricao}</Text>
         <View style={styles.cardTimeContainer}>
           <MaterialCommunityIcons name="calendar-blank-outline" size={14} color={COLORS.gray} />
-          <Text style={styles.cardTime}>{event.data}</Text>
+          <Text style={styles.cardTime}>{event.dataInicio}</Text>
           <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.gray} style={{marginLeft: 10}} />
-          <Text style={styles.cardTime}>{event.horario}</Text>
+          <Text style={styles.cardTime}>{event.horaInicio}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -68,47 +67,46 @@ const DetalhesLojistaScreen = () => {
   useEffect(() => {
     if (!lojistaId) return;
     
-    const fetchLojistaData = async () => {
+    const fetchData = async () => {
+      setLoading(true);
       try {
-        const docRef = doc(db, 'usuarios', lojistaId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setLojista(docSnap.data());
-        } else {
-          console.warn("Lojista não encontrado");
-        }
+        // 1. Buscar dados do lojista
+        // Precisamos criar essa rota no backend: GET /api/users/:id
+        const userRes = await fetch(`${API_URL}/users/${lojistaId}`);
+        if (!userRes.ok) throw new Error('Erro ao buscar lojista');
+        const userData = await userRes.json();
+        setLojista(userData);
+
+        // 2. Buscar eventos do lojista
+        // Precisamos criar essa rota/filtro no backend: GET /api/eventos?lojistaId=X
+        // No momento, se não tiver filtro, buscamos todos e filtramos aqui (pior performance mas funciona)
+        const eventosRes = await fetch(`${API_URL}/eventos`);
+        const allEventos = await eventosRes.json();
+        const lojistaEventos = allEventos
+            .filter(e => e.lojista_id === parseInt(lojistaId)) // Verifica se lojista_id (banco) bate
+            .map(item => ({ // Formata snake_case para camelCase
+                id: item.id,
+                titulo: item.titulo,
+                descricao: item.descricao,
+                categoria: item.categoria,
+                endereco: item.endereco,
+                dataInicio: item.data_inicio,
+                horaInicio: item.hora_inicio,
+                imageUrl: item.image_url,
+            }));
+            
+        setEventos(lojistaEventos);
+
       } catch (error) {
-        console.error("Erro ao buscar lojista:", error);
+        console.error("Erro:", error);
+      } finally {
+        setLoading(false);
       }
     };
     
-    fetchLojistaData();
+    fetchData();
   }, [lojistaId]);
 
-  useEffect(() => {
-    if (!lojistaId) return;
-
-    setLoading(true);
-    const q = query(
-      collection(db, 'eventos'),
-      where('lojistaId', '==', lojistaId),
-      orderBy('criadoEm', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const listaEventos = [];
-      querySnapshot.forEach((doc) => {
-        listaEventos.push({ id: doc.id, ...doc.data() });
-      });
-      setEventos(listaEventos);
-      setLoading(false);
-    }, (error) => {
-      console.error("Erro ao buscar eventos do lojista:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe(); 
-  }, [lojistaId]);
 
   if (loading || !lojista) {
     return (
@@ -128,7 +126,7 @@ const DetalhesLojistaScreen = () => {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.dark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{lojista.nomeNegocio}</Text>
+        <Text style={styles.headerTitle}>{lojista.nomeNegocio || lojista.nome}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -169,109 +167,24 @@ const DetalhesLojistaScreen = () => {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.white },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: '#eee' },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   headerSpacer: { width: 24 }, 
   container: { padding: 15 },
-  lojistaCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 8,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    marginBottom: 20,
-  },
-  establishmentImagePlaceholder: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 8, 
-    backgroundColor: COLORS.lightGray,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  lojistaInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  lojistaName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.dark,
-    marginBottom: 10,
-  },
-  lojistaDetailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  lojistaDetailText: {
-    color: COLORS.gray,
-    fontSize: 14,
-    marginLeft: 10,
-    flex: 1, 
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
+  lojistaCard: { backgroundColor: COLORS.white, borderRadius: 8, padding: 15, flexDirection: 'row', alignItems: 'center', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, marginBottom: 20 },
+  establishmentImagePlaceholder: { width: 80, height: 80, borderRadius: 8, backgroundColor: COLORS.lightGray, justifyContent: 'center', alignItems: 'center' },
+  lojistaInfo: { flex: 1, marginLeft: 15 },
+  lojistaName: { fontSize: 20, fontWeight: 'bold', color: COLORS.dark, marginBottom: 10 },
+  lojistaDetailItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  lojistaDetailText: { color: COLORS.gray, fontSize: 14, marginLeft: 10, flex: 1 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold' },
-  sectionCount: {
-    fontSize: 14,
-    color: COLORS.gray,
-    fontWeight: 'bold',
-  },
-  emptyText: {
-    color: COLORS.gray,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  eventCard: { 
-    backgroundColor: COLORS.white, 
-    borderRadius: 8, 
-    marginBottom: 20, 
-    elevation: 3, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 4, 
-    borderWidth: 1, 
-    borderColor: '#eee',
-  },
-  cardImage: { 
-    height: 140, 
-    width: '100%',
-    borderTopLeftRadius: 8, 
-    borderTopRightRadius: 8,
-  },
-  cardTagContainer: { 
-    position: 'absolute', 
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(0,0,0,0.6)', 
-    borderRadius: 4, 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-  },
+  sectionCount: { fontSize: 14, color: COLORS.gray, fontWeight: 'bold' },
+  emptyText: { color: COLORS.gray, textAlign: 'center', marginTop: 20 },
+  eventCard: { backgroundColor: COLORS.white, borderRadius: 8, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: '#eee' },
+  cardImage: { height: 140, width: '100%', borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+  cardTagContainer: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 },
   cardTag: { color: COLORS.white, fontSize: 12, fontWeight: 'bold' },
   cardContent: { padding: 12 }, 
   cardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 }, 

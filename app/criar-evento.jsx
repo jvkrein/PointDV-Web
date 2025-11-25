@@ -1,11 +1,11 @@
 // app/criar-evento.jsx
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CATEGORIAS_EVENTOS } from '../constants/categories';
 import { EventsContext } from '../contexts/EventsContext';
-import { auth, db } from '../firebaseConfig';
 
 const COLORS = {
   primary: '#4A90E2',
@@ -25,12 +24,10 @@ const COLORS = {
   dark: '#333333',
   lightGray: '#F0F2F5',
   red: '#dc3545',
-  warning: '#f59e0b',
-  warningBg: '#fffbeb',
-  warningText: '#b45309',
 };
 
-// Imagens padrão caso o usuário não faça upload
+const API_URL = 'http://localhost:3000/api';
+
 const DEFAULT_IMAGES = {
   'Comida': 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
   'Música ao Vivo': 'https://images.unsplash.com/photo-1501612780327-45045538702b?w=800',
@@ -61,7 +58,6 @@ const CriarEventoScreen = () => {
   const [categoria, setCategoria] = useState('');
   const [descricao, setDescricao] = useState('');
   
-  // Datas de Início e Fim
   const [dataInicio, setDataInicio] = useState('');
   const [horaInicio, setHoraInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
@@ -90,12 +86,11 @@ const CriarEventoScreen = () => {
     else setFunc(numbers);
   };
 
-  // --- IMAGEM (Lógica Melhorada) ---
   const pickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permissionResult.granted === false) {
-        Alert.alert("Permissão necessária", "Precisamos de acesso à galeria para selecionar a imagem.");
+        Alert.alert("Permissão necessária", "Precisamos de acesso à galeria.");
         return;
       }
       
@@ -103,18 +98,17 @@ const CriarEventoScreen = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [16, 9],
-        quality: 0.8, // AUMENTADO para melhorar a qualidade visual
-        base64: true, // Necessário para salvar no Firestore sem Storage externo
+        quality: 0.8,
+        base64: true, 
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        // Garante que pega a string base64 corretamente
         const imageUri = `data:image/jpeg;base64,${result.assets[0].base64}`;
         setImageUrl(imageUri);
       }
     } catch (e) {
       console.error("Erro ao selecionar imagem:", e);
-      Alert.alert("Erro", "Falha ao carregar imagem da galeria.");
+      Alert.alert("Erro", "Falha ao carregar imagem.");
     }
   };
 
@@ -124,7 +118,6 @@ const CriarEventoScreen = () => {
     setModalVisible(false);
   };
 
-  // --- MAPA (Recuperar endereço do Contexto) ---
   useEffect(() => {
     if (isFocused && selectedMapAddress) {
       setEndereco(selectedMapAddress);
@@ -138,13 +131,12 @@ const CriarEventoScreen = () => {
       setError('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
-    const user = auth.currentUser;
-    if (!user) {
-      setError('Você não está logado. Por favor, reinicie o app.');
-      return;
-    }
+    
     setIsLoading(true);
     try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) throw new Error("Usuário não autenticado");
+
       const eventoData = {
         titulo,
         categoria, 
@@ -155,21 +147,41 @@ const CriarEventoScreen = () => {
         horaFim,
         endereco,
         imageUrl: imageUrl || '',
-        lojistaId: user.uid,
-        criadoEm: serverTimestamp(), 
       };
-      await addDoc(collection(db, 'eventos'), eventoData);
+
+      const response = await fetch(`${API_URL}/eventos`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(eventoData)
+      });
+
+      // --- MUDANÇA AQUI: Ler texto primeiro para evitar erro de JSON ---
+      const responseText = await response.text(); 
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        // Se falhar ao converter pra JSON, é porque veio HTML (Erro do servidor)
+        console.error("Resposta não-JSON do servidor:", responseText);
+        throw new Error(`Erro no servidor: Verifique o console ou reinicie o backend.`);
+      }
+
+      if (!response.ok) {
+          throw new Error(data.error || 'Falha ao criar evento');
+      }
+
       setIsLoading(false);
       Alert.alert('Sucesso!', 'Seu evento foi criado.');
       router.back(); 
-    } catch (firebaseError) {
+
+    } catch (err) {
       setIsLoading(false);
-      console.error('Erro ao criar evento:', firebaseError);
-      if (firebaseError.code === 'resource-exhausted') {
-          setError('Erro: A imagem pode ser muito grande ou cota excedida.');
-      } else {
-          setError('Ocorreu um erro ao salvar seu evento.');
-      }
+      console.error('Erro ao criar evento:', err);
+      setError(err.message || 'Ocorreu um erro ao salvar seu evento.');
     }
   };
 
@@ -177,10 +189,10 @@ const CriarEventoScreen = () => {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}><MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.dark} /></TouchableOpacity>
-          <Text style={styles.headerTitle}>Novo Evento</Text>
+            <TouchableOpacity onPress={() => router.back()}><MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.dark} /></TouchableOpacity>
+            <Text style={styles.headerTitle}>Acesso Negado</Text>
         </View>
-        <View style={styles.permissionDeniedContainer}><Text>Acesso Negado</Text></View>
+        <View style={styles.permissionDeniedContainer}><Text>Apenas lojistas podem criar eventos.</Text></View>
       </SafeAreaView>
     );
   }

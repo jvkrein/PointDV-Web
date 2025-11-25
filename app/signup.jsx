@@ -1,30 +1,20 @@
 // app/signup.jsx
-
-/**
- * Tela de Cadastro de Novos Usuários.
- */
-
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Link, router } from 'expo-router'; // 1. Importar o 'router'
+import { Link, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState, useContext } from 'react'; 
+import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Alert,
-  ActivityIndicator 
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EventsContext } from '../contexts/EventsContext'; 
-import { auth, db } from '../firebaseConfig';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore'; 
 
-// Paleta de cores (adicionada a cor 'danger' para erros)
 const COLORS = {
   primary: '#4A90E2',
   white: '#FFFFFF',
@@ -37,7 +27,6 @@ const COLORS = {
 };
 
 const SignUpScreen = () => {
-  // (Mantive o nome 'userType' do seu arquivo original)
   const [userType, setUserTypeState] = useState('consumidor');
   
   const [nome, setNome] = useState('');
@@ -52,12 +41,6 @@ const SignUpScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // (Não precisamos mais do setGlobalUserType aqui,
-  const { setUserType: setGlobalUserType } = useContext(EventsContext);
-
-  /**
-   * Função principal de cadastro
-   */
   const handleSignUp = async () => {
     setError(null);
     
@@ -79,63 +62,39 @@ const SignUpScreen = () => {
       return;
     }
 
-    // --- 2. INICIAR CADASTRO ---
+    // --- 2. CHAMADA API ---
     setIsLoading(true);
     try {
-      // Passo A: Criar o usuário no Firebase Auth (email/senha)
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      console.log('Usuário criado no Auth com UID:', user.uid);
+      const response = await fetch('http://localhost:3000/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome,
+          email,
+          password,
+          tipoConta: userType,
+          nomeNegocio: userType === 'lojista' ? nomeNegocio : null,
+          telefone: userType === 'lojista' ? telefone : null,
+          endereco: userType === 'lojista' ? endereco : null
+        })
+      });
 
-      // Passo B: Salvar os dados extras no Banco de Dados (Firestore)
-      const userData = {
-        uid: user.uid,
-        nome,
-        email: email.toLowerCase(),
-        tipoConta: userType,
-      };
-      
-      if (userType === 'lojista') {
-        userData.nomeNegocio = nomeNegocio;
-        userData.telefone = telefone;
-        userData.endereco = endereco;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao criar conta.');
       }
 
-      const userDocRef = doc(db, 'usuarios', user.uid);
-      await setDoc(userDocRef, userData);
-      console.log('Dados do usuário salvos no Firestore!');
-
-      // --- 3. SUCESSO E NAVEGAÇÃO ---
       setIsLoading(false);
-      
-      // Em vez de logar o usuário, mostramos um alerta
-      // e o mandamos de volta para a tela de login.
       Alert.alert(
         'Sucesso!',
         'Sua conta foi criada. Por favor, faça o login.'
       );
-      router.replace('/login'); // Volta para a tela de login
-      
+      router.replace('/login'); 
 
-    } catch (firebaseError) {
-      // --- 4. TRATAR ERROS ---
+    } catch (err) {
       setIsLoading(false);
-      console.error('Erro no cadastro:', firebaseError);
-      
-      // Se o erro for de 'setDoc' (Firestore) e não de 'Auth',
-      // o código do erro será 'permission-denied'.
-      if (firebaseError.code === 'permission-denied') {
-        setError('Erro de permissão. Verifique suas regras do Firestore.');
-      }
-      else if (firebaseError.code === 'auth/email-already-in-use') {
-        setError('Este e-mail já está em uso.');
-      } else if (firebaseError.code === 'auth/invalid-email') {
-        setError('O formato do e-mail é inválido.');
-      } else if (firebaseError.code === 'auth/weak-password') {
-        setError('A senha é muito fraca. Tente outra com mais caracteres.');
-      } else {
-        setError('Ocorreu um erro ao criar a conta.');
-      }
+      setError(err.message);
     }
   };
 
@@ -145,9 +104,8 @@ const SignUpScreen = () => {
       <StatusBar style="dark" />
       <ScrollView 
         contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled" // Para o clique funcionar no scroll
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Cabeçalho da página com título e botão de voltar. */}
         <View style={styles.header}>
           <Link href="/login" asChild>
             <TouchableOpacity>
@@ -160,7 +118,6 @@ const SignUpScreen = () => {
           </View>
         </View>
 
-        {/* Seção para o usuário escolher entre os tipos de conta. */}
         <Text style={styles.sectionTitle}>Escolha o tipo de conta</Text>
         <Text style={styles.sectionSubtitle}>Selecione como você vai usar o PointDV</Text>
         <TouchableOpacity 
@@ -188,7 +145,6 @@ const SignUpScreen = () => {
           {userType === 'lojista' && <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.primary} />}
         </TouchableOpacity>
 
-        {/* Formulário com campos comuns a ambos os tipos de usuário. */}
         <Text style={styles.sectionTitle}>Informações Pessoais</Text>
         <View style={styles.inputContainer}>
           <MaterialCommunityIcons name="account-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
@@ -239,7 +195,6 @@ const SignUpScreen = () => {
           />
         </View>
 
-        {/* Renderização Condicional: Estes campos só aparecem se o userType for 'lojista'. */}
         {userType === 'lojista' && (
           <>
             <Text style={styles.sectionTitle}>Informações do Estabelecimento</Text>
@@ -280,7 +235,6 @@ const SignUpScreen = () => {
           </>
         )}
 
-        {/* Botão de ação principal e links do rodapé. */}
         {error && (
           <Text style={styles.errorText}>{error}</Text>
         )}
@@ -306,7 +260,6 @@ const SignUpScreen = () => {
   );
 };
 
-// Folha de estilos do componente.
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.white },
   container: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 20, backgroundColor: COLORS.white },
@@ -326,16 +279,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, height: 50, color: COLORS.dark },
   actionButton: { backgroundColor: COLORS.primary, width: '100%', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 20 },
   actionButtonText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
-  
-  errorText: {
-    color: COLORS.danger,
-    fontSize: 14,
-    marginBottom: 10,
-    textAlign: 'center',
-    fontWeight: '600',
-    width: '100%',
-  },
-
+  errorText: { color: COLORS.danger, fontSize: 14, marginBottom: 10, textAlign: 'center', fontWeight: '600', width: '100%' },
   footerText: { marginTop: 20, fontSize: 12, color: COLORS.gray, textAlign: 'center' },
   linkText: { color: COLORS.link, fontWeight: 'bold' },
   footerLoginText: { marginTop: 20, fontSize: 14, color: COLORS.gray, textAlign: 'center', marginBottom: 20 },
