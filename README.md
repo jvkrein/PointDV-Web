@@ -2,13 +2,13 @@
 
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
 
-Aplicativo agregador de eventos e promoções do comércio local em Dois Vizinhos - PR, desenvolvido para a disciplina de Programação para Dispositivos Móveis.
+Plataforma Web agregador de eventos e promoções do comércio local em Dois Vizinhos - PR, desenvolvido para a disciplina de Programação para Programação para Web 2.
 
 ## ▶️ Como Iniciar o programa
 
 Usar esse comando no CMD no local do projeto:
 
-`npx expo start`
+`npx expo start --web`
 
 ## 📝 Descrição do Projeto
 
@@ -21,12 +21,6 @@ O "PointDV" busca resolver o problema da descentralização na divulgação de e
 - **Perfis de Estabelecimento:** Páginas dedicadas para cada comerciante com suas informações e histórico de eventos.
 - **Autenticação Dupla:** Sistema de cadastro e login distinto para **Consumidores** e **Comerciantes**.
 - **Gerenciamento de Conteúdo:** Painel exclusivo para comerciantes adicionarem, editarem e removerem suas publicações.
-
-## 🎨 Protótipo
-
-O protótipo navegável da aplicação foi desenvolvido no Figma e pode ser acessado através do link abaixo. Ele demonstra o fluxo de navegação e o design das principais telas.
-
-[🔗 **Acessar Protótipo no Figma**](https://www.figma.com/make/oEgOL0xOFR2bbiycd6vBsG/PointDV?fullscreen=1)
 
 ## 📖 Histórias de Usuário
 
@@ -41,7 +35,6 @@ O protótipo navegável da aplicação foi desenvolvido no Figma e pode ser aces
 | **Frontend (Mobile)** | `JavaScript, React Native` |
 | **Backend** | `(A definir)` - Node.js com Express |
 | **Banco de Dados** | `PostgreSQL` |
-| **Prototipagem** | `Figma` |
 
 ## 👥 Equipe
 
