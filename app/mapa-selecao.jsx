@@ -4,7 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,13 +14,17 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-// Importação segura do MapView (só carrega se não for web ou se o bundler suportar)
-import MapView from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EventsContext } from '../contexts/EventsContext';
 
-// --- IMPORTAÇÕES ESPECÍFICAS PARA WEB ---
+// --- IMPORTAÇÕES WEB ---
 import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api';
+
+// --- IMPORTAÇÃO SEGURA DO MAPVIEW (Apenas Mobile) ---
+let MapView;
+if (Platform.OS !== 'web') {
+  MapView = require('react-native-maps').default;
+}
 
 const COLORS = {
   primary: '#4A90E2',
@@ -33,7 +37,7 @@ const COLORS = {
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// Estilo do container do mapa WEB
+// Estilo fixo para o mapa Web (Objeto JS puro, sem StyleSheet)
 const containerStyle = {
   width: '100%',
   height: '100%'
@@ -71,7 +75,6 @@ const MapaSelecaoScreen = () => {
           longitudeDelta: 0.005,
         };
         setRegion(newRegion);
-        // Busca endereço inicial
         fetchAddressFromCoords(newRegion.latitude, newRegion.longitude);
       } catch (error) {
         console.warn("Erro ao buscar localização:", error);
@@ -105,28 +108,27 @@ const MapaSelecaoScreen = () => {
     }
   };
 
-  // --- MOBILE: Ao mover o mapa ---
+  // --- MOBILE ---
   const onRegionChangeComplete = (newRegion) => {
     setRegion(newRegion);
     setDisplayAddress('Carregando endereço...');
     fetchAddressFromCoords(newRegion.latitude, newRegion.longitude); 
   };
   
-  // --- WEB: Ao arrastar o marcador ---
+  // --- WEB ---
   const onMarkerDragEnd = useCallback((e) => {
+    if (!e.latLng) return;
     const newLat = e.latLng.lat();
     const newLng = e.latLng.lng();
-    
     setRegion(prev => ({ ...prev, latitude: newLat, longitude: newLng }));
     setDisplayAddress('Carregando endereço...');
     fetchAddressFromCoords(newLat, newLng);
   }, []);
 
-  // --- WEB: Ao clicar no mapa ---
   const onMapClick = useCallback((e) => {
+    if (!e.latLng) return;
     const newLat = e.latLng.lat();
     const newLng = e.latLng.lng();
-
     setRegion(prev => ({ ...prev, latitude: newLat, longitude: newLng }));
     setDisplayAddress('Carregando endereço...');
     fetchAddressFromCoords(newLat, newLng);
@@ -137,7 +139,6 @@ const MapaSelecaoScreen = () => {
     router.back();
   };
 
-  // --- RENDERIZAÇÃO DO MAPA WEB (INTERATIVO) ---
   const renderWebMap = () => {
     return (
       <View style={styles.webMapContainer}>
@@ -146,13 +147,9 @@ const MapaSelecaoScreen = () => {
             mapContainerStyle={containerStyle}
             center={{ lat: region.latitude, lng: region.longitude }}
             zoom={15}
-            onClick={onMapClick} // Permite clicar para mover
-            options={{
-               streetViewControl: false,
-               mapTypeControl: false
-            }}
+            onClick={onMapClick}
+            options={{ streetViewControl: false, mapTypeControl: false }}
           >
-            {/* Marcador Draggable (Arrastável) */}
             <Marker
               position={{ lat: region.latitude, lng: region.longitude }}
               draggable={true}
@@ -161,10 +158,11 @@ const MapaSelecaoScreen = () => {
           </GoogleMap>
         </LoadScript>
         
-        <View style={styles.webOverlay}>
-          <Text style={styles.webWarning}>
-            Clique no mapa ou arraste o marcador vermelho para selecionar.
-          </Text>
+        {/* Overlay centralizado com Flexbox para evitar erro de transform */}
+        <View style={styles.webOverlayContainer} pointerEvents="none">
+          <View style={styles.webOverlayContent}>
+             <Text style={styles.webWarning}>Clique no mapa ou arraste o marcador</Text>
+          </View>
         </View>
       </View>
     );
@@ -191,14 +189,17 @@ const MapaSelecaoScreen = () => {
             renderWebMap()
           ) : (
             <View style={{flex: 1}}>
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                initialRegion={region}
-                onRegionChangeComplete={onRegionChangeComplete} 
-                provider="google" 
-              />
-              <View style={styles.pinContainer}>
+              {MapView && (
+                <MapView
+                  ref={mapRef}
+                  style={styles.map}
+                  initialRegion={region}
+                  onRegionChangeComplete={onRegionChangeComplete} 
+                  provider="google" 
+                />
+              )}
+              {/* Pointer events via prop, não style */}
+              <View style={styles.pinContainer} pointerEvents="none">
                 <MaterialCommunityIcons name="map-marker" size={40} color={COLORS.red} style={styles.pin} />
               </View>
             </View>
@@ -229,12 +230,14 @@ const styles = StyleSheet.create({
   
   // Mobile
   map: { flex: 1 },
-  pinContainer: { position: 'absolute', left: '50%', top: '50%', marginLeft: -20, marginTop: -40, pointerEvents: 'none' }, // pointerEvents none ajuda na UI
+  pinContainer: { position: 'absolute', left: '50%', top: '50%', marginLeft: -20, marginTop: -40 },
   pin: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2 },
   
   // Web
   webMapContainer: { flex: 1, position: 'relative' },
-  webOverlay: { position: 'absolute', top: 10, left: '50%', transform: [{translateX: '-50%'}], backgroundColor: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 20, zIndex: 5 },
+  // Novo estilo de overlay seguro
+  webOverlayContainer: { position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center', zIndex: 5 },
+  webOverlayContent: { backgroundColor: 'rgba(255,255,255,0.9)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
   webWarning: { color: COLORS.dark, fontSize: 12, fontWeight: '600' },
 
   footer: { backgroundColor: COLORS.white, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderTopColor: '#eee', paddingBottom: 30 },

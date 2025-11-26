@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title><%= evento.id ? 'Editar' : 'Criar' %> Evento</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f4; }
+        .container { background: white; padding: 20px; border-radius: 8px; max-width: 600px; margin: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input, select, textarea { width: 100%; padding: 10px; margin: 5px 0 15px 0; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        .row { display: flex; gap: 10px; }
+        .col { flex: 1; }
+        button { background-color: #4A90E2; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
+        button:hover { background-color: #357ABD; }
+        a { display: block; text-align: center; margin-top: 15px; color: #666; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center;"><%= evento.id ? 'Editar' : 'Criar Novo' %> Evento</h2>
+    
+    <form action="/evento/salvar" method="POST">
+        <input type="hidden" name="id" value="<%= evento.id || '' %>">
+        
+        <label><strong>Título do Evento:</strong></label>
+        <input type="text" name="titulo" value="<%= evento.titulo || '' %>" required>
+        
+        <label><strong>Categoria:</strong></label>
+        <select name="categoria">
+            <% categorias.forEach(function(cat) { %>
+                <option value="<%= cat.nome %>" <%= evento.categoria === cat.nome ? 'selected' : '' %>>
+                    <%= cat.nome %>
+                </option>
+            <% }); %>
+        </select>
+
+        <label><strong>Descrição:</strong></label>
+        <textarea name="descricao" rows="4"><%= evento.descricao || '' %></textarea>
+
+        <div class="row">
+            <div class="col">
+                <label><strong>Data Início:</strong></label>
+                <input type="text" name="dataInicio" placeholder="DD/MM/AAAA" value="<%= evento.data_inicio || '' %>">
+            </div>
+            <div class="col">
+                <label><strong>Hora Início:</strong></label>
+                <input type="text" name="horaInicio" placeholder="HH:MM" value="<%= evento.hora_inicio || '' %>">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <label><strong>Data Fim:</strong></label>
+                <input type="text" name="dataFim" placeholder="DD/MM/AAAA" value="<%= evento.data_fim || '' %>">
+            </div>
+            <div class="col">
+                <label><strong>Hora Fim:</strong></label>
+                <input type="text" name="horaFim" placeholder="HH:MM" value="<%= evento.hora_fim || '' %>">
+            </div>
+        </div>
+        
+        <label><strong>Endereço Completo:</strong></label>
+        <input type="text" name="endereco" value="<%= evento.endereco || '' %>">
+
+        <label><strong>URL da Imagem (Link):</strong></label>
+        <input type="text" name="imageUrl" placeholder="http://..." value="<%= evento.image_url || '' %>">
+
+        <button type="submit">Salvar Evento</button>
+        <a href="/dashboard">Cancelar e Voltar</a>
+    </form>
+</div>
+
+</body>
+</html>

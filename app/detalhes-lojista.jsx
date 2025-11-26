@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,15 +27,31 @@ const COLORS = {
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=500';
 const API_URL = 'http://localhost:3000/api';
 
-const EventCard = ({ event }) => (
-  <Link 
-    href={{
-      pathname: "/detalhes-evento",
-      params: { eventData: JSON.stringify(event) }
-    }} 
-    asChild
-  >
-    <TouchableOpacity style={styles.eventCard}>
+const formatData = (dataString) => {
+  if (!dataString) return '';
+  if (dataString.includes('-')) {
+    const parts = dataString.split('T')[0].split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dataString;
+};
+
+const EventCard = ({ event }) => {
+  const dataDisplay = event.dataFim && event.dataFim !== event.dataInicio
+    ? `${formatData(event.dataInicio)} até ${formatData(event.dataFim)}`
+    : formatData(event.dataInicio);
+
+  return (
+    <TouchableOpacity 
+      style={styles.eventCard}
+      onPress={() => {
+        // --- CORREÇÃO AQUI: Passa apenas o ID ---
+        router.push({
+          pathname: "/detalhes-evento",
+          params: { id: event.id } 
+        });
+      }}
+    >
       <Image 
         source={{ uri: event.imageUrl || PLACEHOLDER_IMAGE }} 
         style={styles.cardImage} 
@@ -48,14 +65,12 @@ const EventCard = ({ event }) => (
         <Text style={styles.cardDescription} numberOfLines={2}>{event.descricao}</Text>
         <View style={styles.cardTimeContainer}>
           <MaterialCommunityIcons name="calendar-blank-outline" size={14} color={COLORS.gray} />
-          <Text style={styles.cardTime}>{event.dataInicio}</Text>
-          <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.gray} style={{marginLeft: 10}} />
-          <Text style={styles.cardTime}>{event.horaInicio}</Text>
+          <Text style={styles.cardTime}>{dataDisplay}</Text>
         </View>
       </View>
     </TouchableOpacity>
-  </Link>
-);
+  );
+};
 
 const DetalhesLojistaScreen = () => {
   const { lojistaId } = useLocalSearchParams(); 
@@ -70,29 +85,28 @@ const DetalhesLojistaScreen = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // 1. Buscar dados do lojista
-        // Precisamos criar essa rota no backend: GET /api/users/:id
         const userRes = await fetch(`${API_URL}/users/${lojistaId}`);
         if (!userRes.ok) throw new Error('Erro ao buscar lojista');
         const userData = await userRes.json();
         setLojista(userData);
 
-        // 2. Buscar eventos do lojista
-        // Precisamos criar essa rota/filtro no backend: GET /api/eventos?lojistaId=X
-        // No momento, se não tiver filtro, buscamos todos e filtramos aqui (pior performance mas funciona)
         const eventosRes = await fetch(`${API_URL}/eventos`);
         const allEventos = await eventosRes.json();
+        
         const lojistaEventos = allEventos
-            .filter(e => e.lojista_id === parseInt(lojistaId)) // Verifica se lojista_id (banco) bate
-            .map(item => ({ // Formata snake_case para camelCase
+            .filter(e => e.lojistaId === parseInt(lojistaId)) 
+            .map(item => ({ 
                 id: item.id,
                 titulo: item.titulo,
                 descricao: item.descricao,
                 categoria: item.categoria,
                 endereco: item.endereco,
-                dataInicio: item.data_inicio,
-                horaInicio: item.hora_inicio,
-                imageUrl: item.image_url,
+                dataInicio: item.dataInicio, 
+                horaInicio: item.horaInicio, 
+                dataFim: item.dataFim,
+                horaFim: item.horaFim,
+                imageUrl: item.imageUrl,
+                lojistaId: item.lojistaId
             }));
             
         setEventos(lojistaEventos);
@@ -139,11 +153,11 @@ const DetalhesLojistaScreen = () => {
             <Text style={styles.lojistaName}>{lojista.nomeNegocio}</Text>
             <View style={styles.lojistaDetailItem}>
               <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.gray} />
-              <Text style={styles.lojistaDetailText}>{lojista.endereco}</Text>
+              <Text style={styles.lojistaDetailText}>{lojista.endereco || 'Endereço não cadastrado'}</Text>
             </View>
             <View style={styles.lojistaDetailItem}>
               <MaterialCommunityIcons name="phone-outline" size={16} color={COLORS.gray} />
-              <Text style={styles.lojistaDetailText}>{lojista.telefone}</Text>
+              <Text style={styles.lojistaDetailText}>{lojista.telefone || 'Telefone não cadastrado'}</Text>
             </View>
           </View>
         </View>
@@ -182,7 +196,18 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: 'bold' },
   sectionCount: { fontSize: 14, color: COLORS.gray, fontWeight: 'bold' },
   emptyText: { color: COLORS.gray, textAlign: 'center', marginTop: 20 },
-  eventCard: { backgroundColor: COLORS.white, borderRadius: 8, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: '#eee' },
+  
+  eventCard: { 
+    backgroundColor: COLORS.white, 
+    borderRadius: 8, 
+    marginBottom: 20, 
+    ...Platform.select({
+      web: { boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)' },
+      default: { elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }
+    }),
+    borderWidth: 1, 
+    borderColor: '#eee' 
+  },
   cardImage: { height: 140, width: '100%', borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   cardTagContainer: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 },
   cardTag: { color: COLORS.white, fontSize: 12, fontWeight: 'bold' },

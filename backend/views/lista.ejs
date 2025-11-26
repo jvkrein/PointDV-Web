@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Painel MVC</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .btn { padding: 5px 10px; background: #007bff; color: white; text-decoration: none; border-radius: 3px; }
+        .btn-danger { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Painel de Eventos (<%= user.tipo_usuario.toUpperCase() %>)</h2>
+        <div>
+            <span>Olá, <strong><%= user.nome %></strong></span>
+            <a href="/logout" style="margin-left:10px; color:red;">Sair</a>
+        </div>
+    </div>
+    
+    <% if (user.tipo_usuario === 'lojista') { %>
+        <a href="/evento/novo" class="btn">+ Criar Novo Evento</a>
+    <% } else { %>
+        <p><em>Como consumidor, você pode visualizar todos os eventos abaixo.</em></p>
+    <% } %>
+    
+    <h3>Eventos Disponíveis</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Categoria</th>
+                <th>Data</th>
+                <% if (user.tipo_usuario === 'lojista') { %> <th>Ações</th> <% } %>
+            </tr>
+        </thead>
+        <tbody>
+            <% eventos.forEach(function(evento) { %>
+                <tr>
+                    <td><%= evento.id %></td>
+                    <td><%= evento.titulo %></td>
+                    <td><%= evento.categoria %></td>
+                    <td><%= evento.data_inicio %></td>
+                    
+                    <% if (user.tipo_usuario === 'lojista') { %>
+                        <td>
+                            <a href="/evento/editar/<%= evento.id %>">Editar</a> | 
+                            <a href="/evento/deletar/<%= evento.id %>" onclick="return confirm('Tem certeza?')" style="color:red">Excluir</a>
+                        </td>
+                    <% } %>
+                </tr>
+            <% }); %>
+        </tbody>
+    </table>
+
+    <% if (user.tipo_usuario === 'lojista' && logs.length > 0) { %>
+        <br><hr>
+        <h3>Auditoria do Sistema (Tabela logs_sistema)</h3>
+        <table style="width: 50%; font-size: 0.9em; color: #555;">
+            <thead><tr><th>Ação</th><th>Data</th></tr></thead>
+            <tbody>
+                <% logs.forEach(function(log) { %>
+                    <tr>
+                        <td><%= log.acao %></td>
+                        <td><%= new Date(log.data_hora).toLocaleString() %></td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    <% } %>
+</body>
+</html>

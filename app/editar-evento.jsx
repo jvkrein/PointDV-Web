@@ -31,7 +31,12 @@ const API_URL = 'http://localhost:3000/api';
 const DEFAULT_IMAGES = {
   'Comida': 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
   'Música ao Vivo': 'https://images.unsplash.com/photo-1501612780327-45045538702b?w=800',
-  // ... (mesmas imagens)
+  'Promoções': 'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?w=800',
+  'Festas e Baladas': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800',
+  'Cultura e Arte': 'https://images.unsplash.com/photo-1508807526345-65c88d30212f?w=800',
+  'Esportes': 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800',
+  'Compras': 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800',
+  'Cursos e Workshops': 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=800',
   'default': 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=800'
 };
 
@@ -124,16 +129,16 @@ const EditarEventoScreen = () => {
         const response = await fetch(`${API_URL}/eventos/${eventId}`);
         if (response.ok) {
           const d = await response.json();
-          // Mapeia do backend (snake_case) para frontend (camelCase)
+          // CORREÇÃO AQUI: Lê camelCase enviado pelo servidor
           setTitulo(d.titulo);
           setCategoria(d.categoria);
           setDescricao(d.descricao);
-          setDataInicio(d.data_inicio);
-          setHoraInicio(d.hora_inicio);
-          setDataFim(d.data_fim || '');
-          setHoraFim(d.hora_fim || '');
+          setDataInicio(d.dataInicio); // Antes era d.data_inicio (erro)
+          setHoraInicio(d.horaInicio); // Antes era d.hora_inicio (erro)
+          setDataFim(d.dataFim || '');
+          setHoraFim(d.horaFim || '');
           setEndereco(d.endereco); 
-          setImageUrl(d.image_url || '');
+          setImageUrl(d.imageUrl || '');
         } else {
           Alert.alert("Erro", "Evento não encontrado.");
           router.back();
@@ -198,6 +203,14 @@ const EditarEventoScreen = () => {
     }
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/meus-eventos');
+    }
+  };
+
   if (userType !== 'lojista') { return ( <SafeAreaView><Text>Acesso Negado</Text></SafeAreaView> ); }
   if (isLoadingData) {
      return (
@@ -214,7 +227,7 @@ const EditarEventoScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} disabled={isLoading}>
+        <TouchableOpacity onPress={handleBack} disabled={isLoading}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.dark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Editar Evento</Text>
@@ -308,7 +321,7 @@ const EditarEventoScreen = () => {
         <TouchableOpacity style={[styles.primaryButton, { opacity: isLoading ? 0.7 : 1.0 }]} onPress={handleUpdateEvent} disabled={isLoading}>
           {isLoading ? <ActivityIndicator size="small" color={COLORS.white} /> : <Text style={styles.primaryButtonText}>Salvar Alterações</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()} disabled={isLoading}>
+        <TouchableOpacity style={styles.cancelButton} onPress={handleBack} disabled={isLoading}>
           <Text style={styles.cancelButtonText}>Cancelar</Text>
         </TouchableOpacity>
       </View>

@@ -1,12 +1,14 @@
 // app/(tabs)/index.jsx
 
+// ... (Imports iguais ao anterior)
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -29,55 +31,105 @@ const COLORS = {
 };
 
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=500';
-const API_URL = 'http://localhost:3000/api'; // Ajuste conforme seu backend
+const API_URL = 'http://localhost:3000/api'; 
+
+// ... (Funções formatData e checkEventEnded iguais ao anterior)
+const formatData = (dataString) => {
+  if (!dataString) return '';
+  if (dataString.includes('-')) {
+    try {
+      const date = new Date(dataString);
+      return date.getUTCDate().toString().padStart(2, '0') + '/' + (date.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + date.getUTCFullYear();
+    } catch (e) { return dataString; }
+  }
+  return dataString;
+};
+
+const checkEventEnded = (dataFim, horaFim) => {
+  if (!dataFim) return false; 
+  try {
+    const now = new Date();
+    let dateStr = dataFim;
+    if (dataFim.includes('T')) dateStr = dataFim.split('T')[0]; 
+    const endDate = new Date(dateStr); 
+    const userTimezoneOffset = endDate.getTimezoneOffset() * 60000;
+    const endDateLocal = new Date(endDate.getTime() + userTimezoneOffset);
+    if (horaFim) {
+        const [hours, minutes] = horaFim.split(':').map(Number);
+        endDateLocal.setHours(hours, minutes, 0, 0);
+    } else {
+        endDateLocal.setHours(23, 59, 59, 999);
+    }
+    return now > endDateLocal;
+  } catch (e) {
+    return false;
+  }
+};
 
 const EventCard = ({ event }) => {
-  // Lógica de "Encerrado" simplificada
-  // (Você pode aprimorar a comparação de datas se precisar)
-  const isEnded = false; 
+  const isEnded = checkEventEnded(event.dataFim, event.horaFim);
+
+  const cardStyle = isEnded 
+    ? StyleSheet.flatten([styles.eventCard, styles.eventCardEnded]) 
+    : styles.eventCard;
+    
+  const imageStyle = isEnded 
+    ? StyleSheet.flatten([styles.cardImage, { opacity: 0.6 }]) 
+    : styles.cardImage;
+
+  // Lógica de exibição de datas (Inicio - Fim)
+  const dataDisplay = event.dataFim && event.dataFim !== event.dataInicio
+    ? `${formatData(event.dataInicio)} até ${formatData(event.dataFim)}`
+    : formatData(event.dataInicio);
+
+  const horaDisplay = event.horaFim 
+    ? `${event.horaInicio} às ${event.horaFim}`
+    : event.horaInicio;
 
   return (
-    <Link 
-      href={{
-        pathname: "/detalhes-evento",
-        params: { eventData: JSON.stringify(event) }
-      }} 
-      asChild
+    <TouchableOpacity 
+      style={cardStyle} 
+      activeOpacity={0.8}
+      onPress={() => {
+        // --- CORREÇÃO AQUI: Passa apenas o ID ---
+        router.push({
+          pathname: "/detalhes-evento",
+          params: { id: event.id } 
+        });
+      }}
     >
-      <TouchableOpacity style={styles.eventCard}>
-        <View>
-          <Image 
-            source={{ uri: event.imageUrl || PLACEHOLDER_IMAGE }} 
-            style={styles.cardImage} 
-          />
-          <View style={styles.cardTagContainer}>
-            <Text style={styles.cardTag}>{event.categoria}</Text>
+      <View>
+        <Image source={{ uri: event.imageUrl || PLACEHOLDER_IMAGE }} style={imageStyle} />
+        <View style={styles.cardTagContainer}>
+          <Text style={styles.cardTag}>{event.categoria}</Text>
+        </View>
+        {isEnded && (
+          <View style={styles.cardEndedContainer}>
+            <Text style={styles.cardEndedText}>ENCERRADO</Text>
           </View>
-          {isEnded && (
-            <View style={styles.cardEndedContainer}>
-              <Text style={styles.cardEndedText}>ENCERRADO</Text>
-            </View>
-          )}
+        )}
+      </View>
+
+      <View style={styles.cardContent}>
+        <Text style={styles.cardTitle}>{event.titulo}</Text>
+        <Text style={styles.cardLocation}>{event.endereco}</Text>
+        <Text style={styles.cardDescription} numberOfLines={2}>{event.descricao}</Text>
+        
+        <View style={styles.cardInfoRow}>
+          <MaterialCommunityIcons name="calendar-range" size={16} color={COLORS.primary} />
+          <Text style={styles.cardInfoText}>{dataDisplay}</Text>
         </View>
 
-        <View style={styles.cardContent}>
-          <Text style={styles.cardTitle}>{event.titulo}</Text>
-          <Text style={styles.cardLocation}>{event.endereco}</Text>
-          <Text style={styles.cardDescription} numberOfLines={2}>{event.descricao}</Text>
-          <View style={styles.cardTimeContainer}>
-            <MaterialCommunityIcons name="calendar-blank-outline" size={14} color={COLORS.gray} />
-            <Text style={styles.cardTime}>{event.dataInicio}</Text>
-            <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.gray} style={{marginLeft: 10}} />
-            <Text style={styles.cardTime}>
-              {event.horaInicio} 
-              {event.horaFim ? ` - ${event.horaFim}` : ''}
-            </Text>
-          </View>
+        <View style={styles.cardInfoRow}>
+          <MaterialCommunityIcons name="clock-outline" size={16} color={COLORS.gray} />
+          <Text style={styles.cardInfoText}>{horaDisplay}</Text>
         </View>
-      </TouchableOpacity>
-    </Link>
+      </View>
+    </TouchableOpacity>
   );
 };
+
+// ... (O Resto do componente FeedScreen é igual, apenas certifique-se de copiar o styles abaixo)
 
 const FeedScreen = () => {
   const [allEvents, setAllEvents] = useState([]); 
@@ -96,25 +148,23 @@ const FeedScreen = () => {
 
   const fetchEvents = async () => {
     try {
-      // Bate na API para pegar todos os eventos
       const response = await fetch(`${API_URL}/eventos`);
       if (!response.ok) throw new Error('Falha ao buscar eventos');
       
       const data = await response.json();
       
-      // Mapeia os dados do Banco (snake_case) para o Frontend (camelCase)
       const formattedData = data.map(item => ({
         id: item.id,
         titulo: item.titulo,
         descricao: item.descricao,
         categoria: item.categoria,
         endereco: item.endereco,
-        dataInicio: item.data_inicio, // Banco: data_inicio
-        horaInicio: item.hora_inicio, // Banco: hora_inicio
-        dataFim: item.data_fim,
-        horaFim: item.hora_fim,
-        imageUrl: item.image_url,     // Banco: image_url
-        lojistaId: item.lojista_id
+        dataInicio: item.dataInicio, 
+        horaInicio: item.horaInicio, 
+        dataFim: item.dataFim,       
+        horaFim: item.horaFim,       
+        imageUrl: item.imageUrl,     
+        lojistaId: item.lojistaId    
       }));
 
       setAllEvents(formattedData);
@@ -137,20 +187,21 @@ const FeedScreen = () => {
     fetchEvents();
   }, []);
 
-  // --- FILTRAGEM CLIENT-SIDE ---
   const filteredEvents = useMemo(() => {
     let result = allEvents;
 
-    // Filtro de Busca Texto
     if (searchTerm) {
       result = result.filter(event => 
         event.titulo.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Filtro de Categoria
     if (filtrosAtivos.categoria) {
       result = result.filter(event => event.categoria === filtrosAtivos.categoria);
+    }
+    
+    if (filtrosAtivos.apenasFuturos) {
+        result = result.filter(event => !checkEventEnded(event.dataFim, event.horaFim));
     }
 
     return result;
@@ -280,18 +331,36 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold' },
   sectionCount: { fontSize: 14, color: COLORS.gray, fontWeight: 'bold' },
-  eventCard: { backgroundColor: COLORS.white, borderRadius: 8, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: '#eee' },
+  
+  eventCard: { 
+    backgroundColor: COLORS.white, 
+    borderRadius: 8, 
+    marginBottom: 20, 
+    ...Platform.select({
+      web: { boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)' },
+      default: { elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }
+    }),
+    borderWidth: 1, 
+    borderColor: '#eee' 
+  },
+  eventCardEnded: {
+    opacity: 0.8,
+    backgroundColor: '#f9f9f9'
+  },
   cardImage: { height: 140, width: '100%', borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   cardTagContainer: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 },
   cardTag: { color: COLORS.white, fontSize: 12, fontWeight: 'bold' },
+  
   cardEndedContainer: { position: 'absolute', top: 10, right: 10, backgroundColor: COLORS.red, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4 },
   cardEndedText: { color: COLORS.white, fontSize: 12, fontWeight: 'bold' },
+  
   cardContent: { padding: 12 }, 
   cardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 }, 
   cardLocation: { color: COLORS.gray, fontSize: 14, marginBottom: 8 }, 
   cardDescription: { color: COLORS.dark, fontSize: 14, marginBottom: 12, lineHeight: 20 },
-  cardTimeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10 },
-  cardTime: { marginLeft: 5, color: COLORS.gray, fontSize: 14 },
+  
+  cardInfoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  cardInfoText: { marginLeft: 8, color: COLORS.dark, fontSize: 13, fontWeight: '500' },
 });
 
 export default FeedScreen;

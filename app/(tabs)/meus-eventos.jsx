@@ -33,6 +33,19 @@ const COLORS = {
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=500';
 const API_URL = 'http://localhost:3000/api';
 
+// --- FUNÇÃO PARA FORMATAR A DATA (Novo) ---
+const formatData = (dataString) => {
+  if (!dataString) return '';
+  // Se vier no formato ISO (2025-03-13T...), converte para 13/03/2025
+  if (dataString.includes('-')) {
+    try {
+      const date = new Date(dataString);
+      return date.getUTCDate().toString().padStart(2, '0') + '/' + (date.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + date.getUTCFullYear();
+    } catch (e) { return dataString; }
+  }
+  return dataString;
+};
+
 // --- ESTADO VAZIO (CONSUMIDOR) ---
 const ConsumerEmptyState = () => (
   <View style={styles.container}>
@@ -42,7 +55,7 @@ const ConsumerEmptyState = () => (
   </View>
 );
 
-// --- ESTADO VAZIO (LOJISTA - NOVO) ---
+// --- ESTADO VAZIO (LOJISTA) ---
 const LojistaEmptyState = () => (
   <View style={styles.container}>
     <MaterialCommunityIcons name="calendar-plus" size={80} color={COLORS.gray} />
@@ -57,19 +70,17 @@ const LojistaEmptyState = () => (
 );
 
 const ConfirmedEventCard = ({ event }) => (
-  <Link 
-    href={{ pathname: "/detalhes-evento", params: { eventData: JSON.stringify(event) } }} 
-    asChild
+  <TouchableOpacity 
+    style={styles.eventCard}
+    onPress={() => router.push({ pathname: "/detalhes-evento", params: { id: event.id } })}
   >
-    <TouchableOpacity style={styles.eventCard}>
       <Image source={{ uri: event.imageUrl || PLACEHOLDER_IMAGE }} style={styles.cardImage} />
       <View style={styles.tagConfirmed}><Text style={styles.tagText}>Confirmado</Text></View>
       <View style={styles.cardContent}>
         <Text style={styles.cardTitle}>{event.titulo}</Text>
         <Text style={styles.cardLocation}>{event.endereco}</Text>
       </View>
-    </TouchableOpacity>
-  </Link>
+  </TouchableOpacity>
 );
 
 const ConsumerParticipationView = () => {
@@ -99,9 +110,9 @@ const ConsumerParticipationView = () => {
             descricao: item.descricao,
             categoria: item.categoria,
             endereco: item.endereco,
-            dataInicio: item.data_inicio,
-            horaInicio: item.hora_inicio,
-            imageUrl: item.image_url,
+            dataInicio: item.dataInicio,
+            horaInicio: item.horaInicio,
+            imageUrl: item.imageUrl,
           }));
 
           setConfirmedEventsData(validEvents);
@@ -127,13 +138,18 @@ const ConsumerParticipationView = () => {
     );
 };
 
-// --- LOJISTA ---
+// --- LOJISTA CARD (Corrigido Data) ---
 const LojistaEventCard = ({ event, onDeletePress }) => (
   <View style={styles.lojistaCard}>
     <View style={styles.lojistaCardContent}>
       <Text style={styles.cardTitle}>{event.titulo}</Text>
       <Text style={styles.cardLocation}>{event.categoria}</Text>
-      <Text style={styles.cardDate}>{event.dataInicio} às {event.horaInicio}</Text>
+      
+      {/* AQUI ESTÁ A CORREÇÃO: formatData() */}
+      <Text style={styles.cardDate}>
+        {formatData(event.dataInicio)} às {event.horaInicio}
+      </Text>
+      
     </View>
     <View style={styles.lojistaCardActions}>
       <Pressable onPress={() => router.push({ pathname: '/editar-evento', params: { eventId: event.id } })} style={styles.editButton}>
@@ -164,9 +180,8 @@ const LojistaEventsScreen = () => {
         const response = await fetch(`${API_URL}/eventos`); 
         const allData = await response.json();
         
-        // Filtra onde lojista_id == meu id
         const myData = allData
-          .filter(item => item.lojistaId === userData.id) // ATENÇÃO: API retorna lojistaId (camelCase no server.js GET) ou lojista_id? No server.js corrigido retorna lojistaId.
+          .filter(item => item.lojistaId === userData.id)
           .map(item => ({
              id: item.id,
              titulo: item.titulo,
@@ -190,33 +205,21 @@ const LojistaEventsScreen = () => {
 
   const handleConfirmDelete = async () => {
     if (!eventToDelete) return;
-    
-    // Estado de loading local ou UI block seria ideal, mas vamos simplificar
     try {
-      console.log("Tentando deletar evento ID:", eventToDelete.id);
-      
       const token = await AsyncStorage.getItem('userToken');
       const response = await fetch(`${API_URL}/eventos/${eventToDelete.id}`, { 
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Falha ao excluir no servidor.");
-      }
+      if (!response.ok) throw new Error("Falha ao excluir");
 
-      // Se chegou aqui, o servidor confirmou a exclusão.
-      // Agora sim atualizamos a lista local.
       setMyEvents(prev => prev.filter(e => e.id !== eventToDelete.id));
       setModalVisible(false);
       Alert.alert("Sucesso", "Evento excluído.");
-
     } catch (e) {
       console.error("Erro ao excluir:", e);
-      Alert.alert("Erro", e.message || "Não foi possível excluir o evento.");
+      Alert.alert("Erro", "Não foi possível excluir o evento.");
     }
   };
 
@@ -245,7 +248,6 @@ const LojistaEventsScreen = () => {
         loading ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={{marginTop: 50}} />
         ) : myEvents.length === 0 ? (
-          // MOSTRA O EMPTY STATE SE A LISTA ESTIVER VAZIA
           <LojistaEmptyState />
         ) : (
           <ScrollView style={styles.listContainer}>

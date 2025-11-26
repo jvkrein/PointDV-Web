@@ -35,35 +35,85 @@ const COLORS = {
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1549488344-cbb6c34cf08b?w=500';
 const API_URL = 'http://localhost:3000/api';
 
+const formatData = (dataString) => {
+  if (!dataString) return '';
+  if (dataString.includes('-')) {
+    try {
+      const date = new Date(dataString);
+      return date.getUTCDate().toString().padStart(2, '0') + '/' + (date.getUTCMonth() + 1).toString().padStart(2, '0') + '/' + date.getUTCFullYear();
+    } catch (e) { return dataString; }
+  }
+  return dataString;
+};
+
+const checkEventEnded = (dataFim, horaFim) => {
+  if (!dataFim) return false; 
+  try {
+    const now = new Date();
+    let dateStr = dataFim;
+    if (dataFim.includes('T')) dateStr = dataFim.split('T')[0]; 
+    const [year, month, day] = dateStr.split('-').map(Number);
+    let hours = 23, minutes = 59;
+    if (horaFim) {
+        const timeParts = horaFim.split(':').map(Number);
+        if (timeParts.length >= 2) { hours = timeParts[0]; minutes = timeParts[1]; }
+    }
+    const endDate = new Date(year, month - 1, day, hours, minutes);
+    return now > endDate;
+  } catch (e) { return false; }
+};
+
 const DetalhesEventoScreen = () => {
-    const params = useLocalSearchParams();
-    const event = JSON.parse(params.eventData);
+    // --- MUDANÇA CRÍTICA: Pegamos apenas o ID ---
+    const { id } = useLocalSearchParams();
+    
+    const [event, setEvent] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const [modalVisible, setModalVisible] = useState(false);
     const { favoritedEvents, toggleFavorite, eventosConfirmados, toggleConfirmedEvent } = useContext(EventsContext);
     
     const [lojista, setLojista] = useState(null);
-    const [loadingLojista, setLoadingLojista] = useState(true);
+    const [loadingLojista, setLoadingLojista] = useState(false);
 
-    const isFavorited = favoritedEvents.includes(event.id);
-    const isConfirmed = eventosConfirmados.includes(event.id);
-
-    // --- Lógica de "Encerrado" ---
-    const checkIsEnded = () => {
-      // (Mantive sua lógica de datas)
-      return false; 
+    const handleBack = () => {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/'); 
+      }
     };
-    const isEnded = checkIsEnded();
 
-    // Buscar dados do Lojista via API
+    // 1. Buscar detalhes do evento pelo ID
+    useEffect(() => {
+        const fetchEvent = async () => {
+            if (!id) {
+                setError("ID inválido");
+                setLoading(false);
+                return;
+            }
+            try {
+                const response = await fetch(`${API_URL}/eventos/${id}`);
+                if (!response.ok) throw new Error("Evento não encontrado");
+                const data = await response.json();
+                setEvent(data);
+            } catch (e) {
+                console.error(e);
+                setError("Erro ao carregar evento.");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchEvent();
+    }, [id]);
+
+    // 2. Buscar lojista (só depois que tiver evento)
     useEffect(() => {
       const fetchLojista = async () => {
-        if (!event.lojistaId) {
-          setLoadingLojista(false);
-          return;
-        }
+        if (!event || !event.lojistaId) return;
+        setLoadingLojista(true);
         try {
-          // Busca lojista pelo endpoint público
           const response = await fetch(`${API_URL}/users/${event.lojistaId}`);
           if (response.ok) {
             const data = await response.json();
@@ -71,79 +121,58 @@ const DetalhesEventoScreen = () => {
           }
         } catch (error) {
           console.error(error);
+        } finally {
+          setLoadingLojista(false);
         }
-        setLoadingLojista(false);
       };
       fetchLojista();
-    }, [event.lojistaId]); 
+    }, [event]); 
 
+    if (loading) return <SafeAreaView style={styles.safeArea}><ActivityIndicator size="large" color={COLORS.primary} style={{marginTop: 50}}/></SafeAreaView>;
     
-    const handleConfirmar = () => {
-        setModalVisible(false);
-        toggleConfirmedEvent(event.id);
-    }
-    
-    // (Demais funções mantidas iguais)
-    const handleOpenMaps = () => {
-      const query = encodeURIComponent(event.endereco);
-      const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-      Linking.openURL(url).catch(err => Alert.alert("Erro", "Não foi possível abrir o mapa."));
-    };
+    if (!event) return (
+        <SafeAreaView style={styles.safeArea}>
+            <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>Evento não encontrado.</Text>
+                <TouchableOpacity onPress={handleBack} style={styles.backButtonError}><Text style={styles.backButtonText}>Voltar</Text></TouchableOpacity>
+            </View>
+        </SafeAreaView>
+    );
 
+    const isFavorited = favoritedEvents.includes(event.id);
+    const isConfirmed = eventosConfirmados.includes(event.id);
+    const isEnded = checkEventEnded(event.dataFim, event.horaFim);
+
+    const handleConfirmar = () => { setModalVisible(false); toggleConfirmedEvent(event.id); }
+    const handleOpenMaps = () => { Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.endereco)}`); };
+    const handleAddToCalendar = () => { Alert.alert("Sucesso", "Adicionado ao calendário"); };
+    const handleGoToLojista = () => { router.push({ pathname: '/detalhes-lojista', params: { lojistaId: event.lojistaId } }); };
+    
     const handleWhatsApp = () => {
-      if (!lojista?.telefone) {
-        Alert.alert("Indisponível", "O estabelecimento não cadastrou um telefone.");
-        return;
-      }
+      if (!lojista?.telefone) return Alert.alert("Indisponível", "Sem telefone.");
       let phone = lojista.telefone.replace(/\D/g, '');
       if (phone.length <= 11) phone = `55${phone}`;
-      const message = `Olá! Vi o evento "${event.titulo}" no PointDV e gostaria de mais informações.`;
-      const url = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`;
-      Linking.openURL(url).catch(() => Alert.alert("Erro", "WhatsApp não instalado ou erro ao abrir."));
+      Linking.openURL(`whatsapp://send?phone=${phone}&text=${encodeURIComponent(`Olá! Vi o evento "${event.titulo}"`)}`);
     };
-
     const handleCall = () => {
-      if (!lojista?.telefone) {
-        Alert.alert("Indisponível", "O estabelecimento não cadastrou um telefone.");
-        return;
-      }
-      const phone = lojista.telefone.replace(/\D/g, '');
-      Linking.openURL(`tel:${phone}`);
-    };
-
-    const handleAddToCalendar = () => {
-       // (Mantido)
-       Alert.alert("Sucesso", "Adicionado ao calendario");
-    };
-
-    const handleGoToLojista = () => {
-      if (!event.lojistaId) return; 
-      router.push({
-        pathname: '/detalhes-lojista',
-        params: { lojistaId: event.lojistaId }
-      });
+      if (!lojista?.telefone) return Alert.alert("Indisponível", "Sem telefone.");
+      Linking.openURL(`tel:${lojista.telefone.replace(/\D/g, '')}`);
     };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-
       <ScrollView>
          <ImageBackground source={{ uri: event.imageUrl || PLACEHOLDER_IMAGE }} style={styles.headerImage}>
           <View style={styles.headerIcons}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+            <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
               <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.dark} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => toggleFavorite(event.id)} style={styles.iconButton}>
               <MaterialCommunityIcons name={isFavorited ? "heart" : "heart-outline"} size={24} color={isFavorited ? COLORS.red : COLORS.dark} />
             </TouchableOpacity>
           </View>
-
-           {isEnded && (
-             <View style={styles.endedBadgeOverlay}>
-               <Text style={styles.endedBadgeText}>ENCERRADO</Text>
-             </View>
-           )}
+           {isEnded && (<View style={styles.endedBadgeOverlay}><Text style={styles.endedBadgeText}>ENCERRADO</Text></View>)}
         </ImageBackground>
         
         <View style={styles.contentContainer}>
@@ -166,21 +195,16 @@ const DetalhesEventoScreen = () => {
           <View style={styles.infoBox}>
             <MaterialCommunityIcons name="calendar-clock" size={24} color={COLORS.primary} />
             <View>
-              <Text style={styles.infoTitle}>Início</Text>
-              <Text style={styles.infoText}>{event.dataInicio} às {event.horaInicio}</Text>
+              <Text style={styles.infoTitle}>Período</Text>
+              <Text style={styles.infoText}>
+                {formatData(event.dataInicio)} {event.dataFim && event.dataFim !== event.dataInicio ? `até ${formatData(event.dataFim)}` : ''}
+              </Text>
+              <Text style={styles.infoText}>
+                {event.horaInicio} {event.horaFim ? `às ${event.horaFim}` : ''}
+              </Text>
             </View>
           </View>
           
-          {(event.dataFim && event.horaFim) && (
-            <View style={styles.infoBox}>
-              <MaterialCommunityIcons name="flag-checkered" size={24} color={COLORS.red} />
-              <View>
-                <Text style={[styles.infoTitle, {color: COLORS.red}]}>Término</Text>
-                <Text style={styles.infoText}>{event.dataFim} às {event.horaFim}</Text>
-              </View>
-            </View>
-          )}
-
           <TouchableOpacity style={styles.infoBox} onPress={handleOpenMaps}>
             <MaterialCommunityIcons name="map-marker-outline" size={24} color={COLORS.primary} />
             <View style={{flex: 1}}>
@@ -225,7 +249,6 @@ const DetalhesEventoScreen = () => {
         )}
       </View>
 
-      {/* Modal - Mantido igual, apenas lógica */}
       <Modal visible={modalVisible} transparent={true} animationType="slide" onRequestClose={() => setModalVisible(false)}>
           <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
               <View style={styles.modalContainer}>
@@ -272,9 +295,12 @@ const DetalhesEventoScreen = () => {
   );
 };
 
-// Styles mantidos
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.white },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { marginTop: 10, fontSize: 16, color: COLORS.gray },
+  backButtonError: { marginTop: 20, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: COLORS.primary, borderRadius: 8 },
+  backButtonText: { color: COLORS.white, fontWeight: 'bold' },
   headerImage: { height: 250, justifyContent: 'space-between', paddingTop: 50, paddingHorizontal: 15, flexDirection: 'row' },
   headerIcons: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
   iconButton: { backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 20, width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; padding: 50px; text-align:center;">
+    <h2>Login MVC (Parte 1)</h2>
+    <% if (locals.erro) { %> <p style="color:red"><%= erro %></p> <% } %>
+    <form action="/login" method="POST">
+        <input type="email" name="email" placeholder="Email" required><br><br>
+        <input type="password" name="password" placeholder="Senha" required><br><br>
+        <button type="submit">Entrar</button>
+    </form>
+    <p>Use um email que você já cadastrou no app.</p>
+</body>
+</html>

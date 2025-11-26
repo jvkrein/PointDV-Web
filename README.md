@@ -8,7 +8,19 @@ Plataforma Web agregador de eventos e promoções do comércio local em Dois Viz
 
 Usar esse comando no CMD no local do projeto:
 
+Na pasta principal:
+
 `npx expo start --web`
+
+Na pasta backend:
+
+`node server.js`
+
+-----------------------
+
+(Versão simples (MVC)):
+
+`node server_mvc.js`
 
 ## 📝 Descrição do Projeto
 
